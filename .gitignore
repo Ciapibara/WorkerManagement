@@ -1,0 +1,30 @@
+# Visual Studio Code
+.vscode/
+
+# Visual Studio
+.vs/
+*.vspscc
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Rider
+.idea/
+
+# Build results
+/bin/
+/obj/
+
+# NuGet Packages
+*.nupkg
+*.pdb
+*.dll
+*.exe
+
+# MSTest test Results
+TestResults/
+
+# Legacy .NET files
+*.aps
+*.vshost.*
