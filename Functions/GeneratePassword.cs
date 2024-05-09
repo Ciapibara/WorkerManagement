@@ -8,8 +8,8 @@ namespace WorkerManagement.Functions
 
     public static string GeneratePassword(int length)
     {
-      Random random = new Random();
-      StringBuilder password = new StringBuilder();
+      Random random = new();
+      StringBuilder password = new();
 
       for (int i = 0; i < length; i++)
       {

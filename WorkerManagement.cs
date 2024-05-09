@@ -1,9 +1,8 @@
 ﻿using MySql.Data.MySqlClient;
+using System.Xml.Linq;
 using WorkerManagement.Functions;
 using WorkerManagement.Models;
 
-// SHOWING JOBS AND TOTAL COUNT OF PEOPLE IN THEM
-// SELECT id_role, COUNT(*) AS count_people FROM workers GROUP BY id_role;
 namespace WorkerManagement
 {
   internal class WorkerRepository
@@ -15,30 +14,9 @@ namespace WorkerManagement
                                       "database=workgroup;" +
                                       "password=";
 
-    private static Worker MapWorker(MySqlDataReader dr)
+    private Worker? GetWorker(int id)
     {
-      List<Note> workerNotes = [];
-      while (dr.Read())
-      {
-        if (!string.IsNullOrEmpty(dr["content"].ToString()))
-          workerNotes.Add(new Note(Convert.ToInt32(dr["id_note"]), dr["content"].ToString()));
-      }
-
-      return new Worker(
-        id: dr.GetInt32("id_worker"),
-        name: dr.GetString("name"),
-        surname: dr.GetString("surname"),
-        login: dr.GetString("login"),
-        password: dr.GetString("password"),
-        id_role: dr.GetInt32("id_role"),
-        age: dr.GetInt32("age"),
-        hire_date: dr.GetDateTime("hire_date"),
-        notes: workerNotes
-        );
-    }
-
-    internal Worker? GetWorker(int id)
-    {
+      Worker? worker = null;
       using MySqlConnection conn = new(connStr);
       MySqlCommand cmd = new("SELECT workers.*, note.content, note.id_note " +
                              "FROM workers " +
@@ -49,23 +27,80 @@ namespace WorkerManagement
 
       using MySqlDataReader dr = cmd.ExecuteReader();
 
-      return MapWorker(dr);
+      while (dr.Read())
+      {
+        int id_worker = dr.GetInt32("id_worker");
+        string name = dr.GetString("name");
+        string surname = dr.GetString("surname");
+        string login = dr.GetString("login");
+        int id_role = dr.GetInt32("id_role");
+        int age = dr.GetInt32("age");
+        DateTime hire_date = dr.GetDateTime("hire_date");
+
+        return new Worker
+        {
+          Id_worker = id_worker,
+          Name = name,
+          Surname = surname,
+          Login = login,
+          Id_role = id_role,
+          Age = age,
+          Hire_date = hire_date,
+          Notes = GetNotes(id_worker)
+        };
+      }
+
+      return worker;
     }
 
-    internal List<Worker> GetAllWorkers()
+    private List<Note> GetNotes(int id_worker)
     {
-      List<Worker> allWorkers = [];
+      List<Note> workerNotes = [];
 
-      using MySqlConnection conn = new(connStr);
-      MySqlCommand cmd = new("SELECT workers.*, note.content, note.id_note " +
-                             "FROM workers " +
-                             "LEFT JOIN note ON workers.id_worker = note.id_worker", conn);
+      using MySqlConnection conn = new MySqlConnection(connStr);
+      MySqlCommand cmd = new MySqlCommand("SELECT id_note, content FROM note WHERE id_worker = @id_worker", conn);
+      cmd.Parameters.AddWithValue("@id_worker", id_worker);
 
       conn.Open();
 
       using MySqlDataReader dr = cmd.ExecuteReader();
       while (dr.Read())
-        allWorkers.Add(MapWorker(dr));
+      {
+        if (!dr.IsDBNull(dr.GetOrdinal("id_note")))
+        {
+          workerNotes.Add(new Note(dr.GetInt32("id_note"), dr.GetString("content")));
+        }
+      }
+
+      return workerNotes;
+    }
+
+    private List<Worker> GetAllWorkers()
+    {
+      List<Worker> allWorkers = [];
+
+      using MySqlConnection conn = new(connStr);
+      MySqlCommand cmd = new("SELECT `id_worker`, `name`, `surname`, `id_role` " +
+                             "FROM workers", conn);
+
+      conn.Open();
+
+      using MySqlDataReader dr = cmd.ExecuteReader();
+      while (dr.Read())
+      {
+        int id_worker = dr.GetInt32("id_worker");
+        string name = dr.GetString("name");
+        string surname = dr.GetString("surname");
+        int id_role = dr.GetInt32("id_role");
+
+        allWorkers.Add(new Worker
+        {
+          Id_worker = id_worker,
+          Name = name,
+          Surname = surname,
+          Id_role = id_role,
+        });
+      }
 
       return allWorkers;
     }
@@ -78,7 +113,7 @@ namespace WorkerManagement
       Console.WriteLine($"{worker.Name} {worker.Surname} ({worker.Age})");
       Console.WriteLine($"Login: {worker.Login}");
       Console.WriteLine($"Zatrudniony: {worker.Hire_date.ToShortDateString()} na stanowisku {stanowisko[worker.Id_role]}");
-      if (worker.Notes.Count != 0)
+      if (worker.Notes.Count > 0)
       {
         Console.WriteLine("Dodatkowe informacje:");
         worker.Notes.ForEach(note => Console.WriteLine($"{note.Id_note}. {note.Content}"));
@@ -104,60 +139,13 @@ namespace WorkerManagement
                      ("@content", content));
     }
 
-    internal void RemoveNote(int noteId) =>
-      ExecuteNonQuery("DELETE FROM `note` WHERE id_note = @noteId}", ("@noteId", noteId));
-
-    internal void AddWorker(string? msg = null)
+    internal void RemoveNote(int noteId)
     {
-      if (string.IsNullOrEmpty(msg))
-        Console.WriteLine(msg);
+      ExecuteNonQuery("DELETE FROM `note` WHERE id_note = @noteId", ("@noteId", noteId));
+    }
 
-      Console.WriteLine("Podaj imie max. 24 znaki");
-      string name = Console.ReadLine();
-      if (name.Length > 24)
-        AddWorker("Imie powinno miec max 24. znakow");
-
-      Console.WriteLine("Podaj nazwisko max. 80 znakow");
-      string surname = Console.ReadLine();
-      if (surname.Length > 16)
-        AddWorker("Nazwisko powinno miec max 80. znakow");
-
-      Console.WriteLine("Podaj login max. 16 znakow");
-      string login = Console.ReadLine();
-      if (login.Length > 16)
-        AddWorker("Login powinien miec max 16. znakow");
-
-      Console.WriteLine("Podaj haslo max. 30 znakow");
-      string password = Console.ReadLine();
-      if (login.Length > 16)
-        AddWorker("Haslo powinno miec max 30. znakow");
-
-      Console.WriteLine("Podaj stanowisko");
-      Console.WriteLine("1. Administrator, 2. Rekruter, 3. Programista 4. HR");
-      if (!int.TryParse(Console.ReadLine(), out int id_role) && id_role <= 4 && id_role > 0)
-        AddWorker("Nie prawidlowa liczba");
-
-      Console.WriteLine("Podaj wiek");
-      if (!int.TryParse(Console.ReadLine(), out int age))
-        AddWorker("Nieprawidlowy wiek");
-
-      Console.WriteLine("Podaj date zatrudnienia (np 2024-05-26), kliknij enter, żeby ustawić teraźniejszą.");
-      string hire_dateString = Console.ReadLine();
-      DateTime hire_date;
-
-      if (string.IsNullOrEmpty(hire_dateString))
-      {
-        hire_date = DateTime.Now;
-      }
-      else
-      {
-        if (!DateTime.TryParse(hire_dateString, out hire_date))
-        {
-          Console.WriteLine("Nieprawidłowa data.");
-          return;
-        }
-      }
-
+    internal void AddWorker(string name, string surname, string login, string password, int id_role, int age, DateTime hire_date)
+    {
       ExecuteNonQuery("INSERT INTO `workers`(`name`, `surname`, `login`, `password`, `id_role`, `age`, `hire_date`, `is_working`) " +
                       "VALUES(@name, @surname, @login, @password, @id_role, @age, @hire_date, 1)",
                       ("@name", name),
@@ -169,8 +157,24 @@ namespace WorkerManagement
                       ("@hire_date", hire_date.ToString("yyyy-MM-dd HH:mm:ss")));
     }
 
-    internal void RemoveWorker(int id) =>
+    internal void RemoveWorker(int id)
+    {
       ExecuteNonQuery("DELETE FROM `workers` WHERE id_worker = @id", ("@id", id));
+    }
+
+    internal void CountAllPeople()
+    {
+      using MySqlConnection conn = new(connStr);
+      MySqlCommand cmd = new("SELECT id_role, COUNT(*) AS count_people FROM workers GROUP BY id_role", conn);
+
+      conn.Open();
+
+      using MySqlDataReader dr = cmd.ExecuteReader();
+      for (int i = 1; dr.Read(); i++)
+      {
+        Console.WriteLine($"{stanowisko[i]}: {dr.GetInt32("count_people")}");
+      }
+    }
 
     internal void RegeneratePassword(int id)
     {
@@ -183,7 +187,7 @@ namespace WorkerManagement
 
     private void ExecuteNonQuery(string query, params (string, object)[] parameters)
     {
-      using MySqlConnection conn = new MySqlConnection(connStr);
+      using MySqlConnection conn = new(connStr);
       conn.Open();
       using MySqlCommand cmd = new(query, conn);
       foreach (var (column, columnValue) in parameters)
